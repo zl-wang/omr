@@ -184,10 +184,7 @@ TR::Register *TR_X86IntegerMultiplyDecomposer::decomposeIntegerMultiplier(int32_
             } else if (absMultiplier & 4) {
                 shiftAmount = trailingZeroes(absMultiplier - 4);
                 generateRegImmInstruction(TR::InstOpCode::SHLRegImm1(nodeIs64Bit), _node, target, shiftAmount, _cg);
-                generateRegRegInstruction(TR::InstOpCode::ADDRegReg(nodeIs64Bit), _node, _sourceRegister,
-                    _sourceRegister, _cg);
-                generateRegRegInstruction(TR::InstOpCode::ADDRegReg(nodeIs64Bit), _node, _sourceRegister,
-                    _sourceRegister, _cg);
+                generateRegImmInstruction(TR::InstOpCode::SHLRegImm1(nodeIs64Bit), _node, _sourceRegister, 2, _cg);
                 generateRegRegInstruction(TR::InstOpCode::ADDRegReg(nodeIs64Bit), _node, target, _sourceRegister, _cg);
             } else {
                 shiftAmount = trailingZeroes(absMultiplier);
@@ -247,10 +244,7 @@ TR::Register *TR_X86IntegerMultiplyDecomposer::decomposeIntegerMultiplier(int32_
             } else if (absMultiplier & 4) {
                 shiftAmount = trailingZeroes(absMultiplier + 4);
                 generateRegImmInstruction(TR::InstOpCode::SHLRegImm1(nodeIs64Bit), _node, target, shiftAmount, _cg);
-                generateRegRegInstruction(TR::InstOpCode::ADDRegReg(nodeIs64Bit), _node, _sourceRegister,
-                    _sourceRegister, _cg);
-                generateRegRegInstruction(TR::InstOpCode::ADDRegReg(nodeIs64Bit), _node, _sourceRegister,
-                    _sourceRegister, _cg);
+                generateRegImmInstruction(TR::InstOpCode::SHLRegImm1(nodeIs64Bit), _node, _sourceRegister, 2, _cg);
                 generateRegRegInstruction(TR::InstOpCode::SUBRegReg(nodeIs64Bit), _node, target, _sourceRegister, _cg);
             } else {
                 shiftAmount = trailingZeroes(absMultiplier);
@@ -290,6 +284,21 @@ int32_t TR_X86IntegerMultiplyDecomposer::findDecomposition(int64_t multiplier)
 
     if ((i < NUM_CONSTS_DECOMPOSED) && (_integerMultiplySolutions[i]._multiplier == multiplier)) {
         const integerMultiplyComposition &composition = _integerMultiplySolutions[i];
+
+        // Preferably, this should be a processor-implementation-specific testing plus hyperthreading
+        // mode consideration in effective ALU/AGU capacity. But here we take a simplified approach
+        // with below assumptions being true on modern X86 implementations:
+        // 1) mul latency is typically 3 cycles;
+        // 2) lea/add/sub/shift are of 1 cycle latency;
+        int j;
+        for (j = 0; composition._components[j]._operation != done; j++) {
+            ;
+        }
+
+        if (j > 3) { // counting from 0, this means there are more than 3 decomposed operations
+            return -1;
+        }
+
         int32_t correctionIfTakeAdvantageOfClobberableSource = 0;
         if (_canClobberSource && composition._sourceDisjointWithFirstRegister) {
             correctionIfTakeAdvantageOfClobberableSource = 1;
